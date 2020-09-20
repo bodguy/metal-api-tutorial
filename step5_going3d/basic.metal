@@ -14,7 +14,7 @@ typedef struct {
 } VertexOut;
 
 typedef struct {
-    float4x4 rotation_matrix;
+    float4x4 model_view_projection_matrix;
 } Uniforms;
 
 vertex VertexOut render_vertex(
@@ -22,7 +22,7 @@ vertex VertexOut render_vertex(
     constant Uniforms &uniforms [[buffer(1)]],
     uint vid [[vertex_id]]) {
     VertexOut out;
-    out.position = uniforms.rotation_matrix * vertices[vid].position;
+    out.position = uniforms.model_view_projection_matrix * vertices[vid].position;
     out.color = vertices[vid].color;
     return out;
 }

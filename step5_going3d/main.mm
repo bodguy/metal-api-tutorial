@@ -63,6 +63,34 @@ struct matrix_float4x4 {
 			return *this;
 		}
 
+    matrix_float4x4 operator*(const matrix_float4x4& other) const { return matrix_float4x4(*this) *= other; }
+
+    matrix_float4x4& operator*=(const matrix_float4x4& other) {
+      matrix_float4x4 result;
+      result.m16[0] = m16[0] * other.m16[0] + m16[1] * other.m16[4] + m16[2] * other.m16[8] + m16[3] * other.m16[12];
+      result.m16[1] = m16[0] * other.m16[1] + m16[1] * other.m16[5] + m16[2] * other.m16[9] + m16[3] * other.m16[13];
+      result.m16[2] = m16[0] * other.m16[2] + m16[1] * other.m16[6] + m16[2] * other.m16[10] + m16[3] * other.m16[14];
+      result.m16[3] = m16[0] * other.m16[3] + m16[1] * other.m16[7] + m16[2] * other.m16[11] + m16[3] * other.m16[15];
+
+      result.m16[4] = m16[4] * other.m16[0] + m16[5] * other.m16[4] + m16[6] * other.m16[8] + m16[7] * other.m16[12];
+      result.m16[5] = m16[4] * other.m16[1] + m16[5] * other.m16[5] + m16[6] * other.m16[9] + m16[7] * other.m16[13];
+      result.m16[6] = m16[4] * other.m16[2] + m16[5] * other.m16[6] + m16[6] * other.m16[10] + m16[7] * other.m16[14];
+      result.m16[7] = m16[4] * other.m16[3] + m16[5] * other.m16[7] + m16[6] * other.m16[11] + m16[7] * other.m16[15];
+
+      result.m16[8] = m16[8] * other.m16[0] + m16[9] * other.m16[4] + m16[10] * other.m16[8] + m16[11] * other.m16[12];
+      result.m16[9] = m16[8] * other.m16[1] + m16[9] * other.m16[5] + m16[10] * other.m16[9] + m16[11] * other.m16[13];
+      result.m16[10] = m16[8] * other.m16[2] + m16[9] * other.m16[6] + m16[10] * other.m16[10] + m16[11] * other.m16[14];
+      result.m16[11] = m16[8] * other.m16[3] + m16[9] * other.m16[7] + m16[10] * other.m16[11] + m16[11] * other.m16[15];
+
+      result.m16[12] = m16[12] * other.m16[0] + m16[13] * other.m16[4] + m16[14] * other.m16[8] + m16[15] * other.m16[12];
+      result.m16[13] = m16[12] * other.m16[1] + m16[13] * other.m16[5] + m16[14] * other.m16[9] + m16[15] * other.m16[13];
+      result.m16[14] = m16[12] * other.m16[2] + m16[13] * other.m16[6] + m16[14] * other.m16[10] + m16[15] * other.m16[14];
+      result.m16[15] = m16[12] * other.m16[3] + m16[13] * other.m16[7] + m16[14] * other.m16[11] + m16[15] * other.m16[15];
+
+      *this = result;
+      return *this;
+    }
+
 		matrix_float4x4& MakeIdentity() { return *this = Identity(); }
 
   	matrix_float4x4 Identity() { return matrix_float4x4(1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f); }
@@ -88,6 +116,39 @@ struct matrix_float4x4 {
 			);
   	}
 
+    static matrix_float4x4 matrix_float4x4_uniform_scale(const vector_float3& scale) {
+      matrix_float4x4 mat;
+      mat.m16[0] = scale.x;
+      mat.m16[5] = scale.y;
+      mat.m16[10] = scale.z;
+
+      return mat;
+    }
+
+    static matrix_float4x4 matrix_float4x4_translation(const vector_float3& translation) {
+      matrix_float4x4 mat;
+      mat.m16[12] = translation.x;
+      mat.m16[13] = translation.y;
+      mat.m16[14] = translation.z;
+
+      return mat;
+    }
+
+    static matrix_float4x4 zero() { return matrix_float4x4(0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f); }
+
+    static matrix_float4x4 matrix_float4x4_perspective(float fieldOfView, float aspectRatio, float znear, float zfar) {
+      float tanHalfFovy = std::tan(fieldOfView / 2.f);
+
+      matrix_float4x4 mat = matrix_float4x4::zero();
+      mat.m16[0] = 1.0f / (aspectRatio * tanHalfFovy);
+      mat.m16[5] = 1.0f / tanHalfFovy;
+      mat.m16[10] = -(zfar + znear) / (zfar - znear);
+      mat.m16[11] = -1.0f;
+      mat.m16[14] = -(2.0f * zfar * znear) / (zfar - znear);
+
+      return mat;
+    }
+
     float m16[16];
 
 		void Swap(matrix_float4x4& first, matrix_float4x4& second) {
@@ -99,7 +160,7 @@ struct matrix_float4x4 {
 };
 
 typedef struct {
-    matrix_float4x4 rotation_matrix{};
+    matrix_float4x4 model_view_projection_matrix{};
 } Uniforms;
 
 typedef struct
@@ -146,9 +207,20 @@ bool read_file(const std::string& filepath, std::string& out_source) {
     return true;
 }
 
+const float aspect = k_WindowWidth / k_WindowHeight;
+const float fov = deg_to_rad(60.f);
+const float near = 0.1f;
+const float far = 5000.f;
+const vector_float3 cameraTranslation = { 0, 0, -5 };
+const matrix_float4x4 viewMatrix = matrix_float4x4::matrix_float4x4_translation(cameraTranslation);
+const matrix_float4x4 projectionMatrix = matrix_float4x4::matrix_float4x4_perspective(aspect, fov, near, far);
+
 void doUpdate() { 
   rotationAngle++;
-	g_uniforms.rotation_matrix = matrix_float4x4::rotation_matrix_axis(deg_to_rad(rotationAngle), vector_float3{0, 0, 1});
+	const matrix_float4x4 modelMatrix = matrix_float4x4::rotation_matrix_axis(deg_to_rad(30), vector_float3{1, 1, 1}) * matrix_float4x4::rotation_matrix_axis(deg_to_rad(rotationAngle), vector_float3{0, 1, 0}) 
+    * matrix_float4x4::matrix_float4x4_uniform_scale(vector_float3{0.2, 0.2, 0.2});
+  g_uniforms.model_view_projection_matrix = modelMatrix;
+
   memcpy([g_uniformBuffer contents], &g_uniforms, sizeof(g_uniforms));
 }
 
@@ -259,14 +331,14 @@ int renderInit()
 
   static const VertexSemantic vertices[] =
   {
-      { .position = { -1,  1,  1, 1 }, .color = { 0, 1, 1, 1 } },
-      { .position = { -1, -1,  1, 1 }, .color = { 0, 0, 1, 1 } },
-      { .position = {  1, -1,  1, 1 }, .color = { 1, 0, 1, 1 } },
-      { .position = {  1,  1,  1, 1 }, .color = { 1, 1, 1, 1 } },
-      { .position = { -1,  1, -1, 1 }, .color = { 0, 1, 0, 1 } },
-      { .position = { -1, -1, -1, 1 }, .color = { 0, 0, 0, 1 } },
-      { .position = {  1, -1, -1, 1 }, .color = { 1, 0, 0, 1 } },
-      { .position = {  1,  1, -1, 1 }, .color = { 1, 1, 0, 1 } }
+      { .position = { -1,  1,  1, 1 }, .color = { 1, 0, 0, 1 } },
+      { .position = { -1, -1,  1, 1 }, .color = { 0, 1, 0, 1 } },
+      { .position = {  1, -1,  1, 1 }, .color = { 0, 0, 1, 1 } },
+      { .position = {  1,  1,  1, 1 }, .color = { 1, 1, 0, 1 } },
+      { .position = { -1,  1, -1, 1 }, .color = { 1, 0, 1, 1 } },
+      { .position = { -1, -1, -1, 1 }, .color = { 0, 1, 1, 1 } },
+      { .position = {  1, -1, -1, 1 }, .color = { 1, 1, 1, 1 } },
+      { .position = {  1,  1, -1, 1 }, .color = { 1, 0, 0, 1 } }
   };
 
   static const uint16_t indices[] =
@@ -287,7 +359,6 @@ int renderInit()
                                   length:sizeof(indices)
                                   options:MTLResourceOptionCPUCacheModeDefault];
 
-  g_uniforms.rotation_matrix = matrix_float4x4::rotation_matrix_axis(deg_to_rad(rotationAngle), vector_float3{0, 0, 1});
   g_uniformBuffer = [g_mtlDevice newBufferWithBytes:&g_uniforms
                                   length:sizeof(g_uniforms)
                                   options:MTLResourceOptionCPUCacheModeDefault];
@@ -297,6 +368,11 @@ int renderInit()
 
 void renderDestroy()
 {
+  [g_depthStencilState release];
+  [g_depthTexture release];
+  [g_indexBuffer release];
+  [g_uniformBuffer release];
+  [g_vertexBuffer release];
   [g_mtlPipelineState release];
   [g_mtlCommandQueue release];
   [g_mtlDevice release];
