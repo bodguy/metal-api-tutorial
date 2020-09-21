@@ -8,8 +8,8 @@
 #include <cmath>
 #include <iostream>
 
-static const int k_WindowWidth  = 1024;
-static const int k_WindowHeight = 768;
+static const int k_WindowWidth  = 800;
+static const int k_WindowHeight = 600;
 const float MY_PI = 3.1415926f;
 const float degrees_to_radians = MY_PI / 180.f;
 float deg_to_rad(float degrees) { return degrees * degrees_to_radians; }
@@ -18,6 +18,34 @@ struct vector_float3 {
 	vector_float3() :x{0}, y{0}, z{0} {}
 	vector_float3(float _x, float _y, float _z) :x{_x}, y{_y}, z{_z} {}
 	float x, y, z;
+
+  static vector_float3 vector_float3_cross(const vector_float3& a, const vector_float3& b) { 
+    return vector_float3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); 
+  }
+
+  static float vector_float3_dot(const vector_float3& a, const vector_float3& b) { 
+    return a.x * b.x + a.y * b.y + a.z * b.z; 
+  }
+
+  vector_float3& vector_float3_normalize() {
+    float len = std::sqrt(x * x + y * y + z * z);
+    float inv = 1 / len;
+
+    x = x * inv;
+    y = y * inv;
+    z = z * inv;
+
+    return *this;
+  }
+
+  vector_float3 operator-(const vector_float3& other) const { return vector_float3(*this) -= other; }
+
+  vector_float3& operator-=(const vector_float3& other) {
+    x -= other.x;
+    y -= other.y;
+    z -= other.z;
+    return *this;
+  }
 };
 
 struct vector_float4 {
@@ -136,7 +164,19 @@ struct matrix_float4x4 {
 
     static matrix_float4x4 zero() { return matrix_float4x4(0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f); }
 
-    static matrix_float4x4 matrix_float4x4_perspective(float fieldOfView, float aspectRatio, float znear, float zfar) {
+    static matrix_float4x4 matrix_float4x4_lookat(const vector_float3& eye, const vector_float3& lookat, const vector_float3& up) {
+      vector_float3 zaxis = (eye - lookat).vector_float3_normalize();
+      vector_float3 xaxis = vector_float3::vector_float3_cross(up, zaxis).vector_float3_normalize();
+      vector_float3 yaxis = vector_float3::vector_float3_cross(zaxis, xaxis);
+
+      return matrix_float4x4(xaxis.x, yaxis.x, zaxis.x, 0.f, 
+        xaxis.y, yaxis.y, zaxis.y, 0.f, 
+        xaxis.z, yaxis.z, zaxis.z, 0.f, 
+        -vector_float3::vector_float3_dot(xaxis, eye), -vector_float3::vector_float3_dot(yaxis, eye), -vector_float3::vector_float3_dot(zaxis, eye), 1.f
+      );
+    }
+
+    static matrix_float4x4 matrix_from_perspective_fov_aspectLH(float fieldOfView, float aspectRatio, float znear, float zfar) {
       float tanHalfFovy = std::tan(fieldOfView / 2.f);
 
       matrix_float4x4 mat = matrix_float4x4::zero();
@@ -207,19 +247,14 @@ bool read_file(const std::string& filepath, std::string& out_source) {
     return true;
 }
 
-const float aspect = k_WindowWidth / k_WindowHeight;
-const float fov = deg_to_rad(60.f);
-const float near = 0.1f;
-const float far = 5000.f;
-const vector_float3 cameraTranslation = { 0, 0, -5 };
-const matrix_float4x4 viewMatrix = matrix_float4x4::matrix_float4x4_translation(cameraTranslation);
-const matrix_float4x4 projectionMatrix = matrix_float4x4::matrix_float4x4_perspective(aspect, fov, near, far);
+const matrix_float4x4 viewMatrix = matrix_float4x4::matrix_float4x4_lookat({0, 0, 7}, {0, 0, 0}, {0, 1, 0});
+const matrix_float4x4 projectionMatrix = matrix_float4x4::matrix_from_perspective_fov_aspectLH(k_WindowWidth / k_WindowHeight, deg_to_rad(60.f), 0.1f, 5000.f);
 
 void doUpdate() { 
   rotationAngle++;
-	const matrix_float4x4 modelMatrix = matrix_float4x4::rotation_matrix_axis(deg_to_rad(30), vector_float3{1, 1, 1}) * matrix_float4x4::rotation_matrix_axis(deg_to_rad(rotationAngle), vector_float3{0, 1, 0}) 
-    * matrix_float4x4::matrix_float4x4_uniform_scale(vector_float3{0.2, 0.2, 0.2});
-  g_uniforms.model_view_projection_matrix = modelMatrix;
+	const matrix_float4x4 modelMatrix = matrix_float4x4::rotation_matrix_axis(deg_to_rad(rotationAngle), {0, 1, 0})
+    * matrix_float4x4::matrix_float4x4_uniform_scale({1, 1, 1});
+  g_uniforms.model_view_projection_matrix = modelMatrix * viewMatrix * projectionMatrix;
 
   memcpy([g_uniformBuffer contents], &g_uniforms, sizeof(g_uniforms));
 }
@@ -236,7 +271,7 @@ void doRender()
   id<MTLTexture> framebufferTexture = drawable.texture;
 
   MTLRenderPassDescriptor* passDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
-  passDescriptor.colorAttachments[0].clearColor  = MTLClearColorMake(1, 1, 1, 1);
+  passDescriptor.colorAttachments[0].clearColor  = MTLClearColorMake(0, 0, 0, 1);
   passDescriptor.colorAttachments[0].texture     = framebufferTexture;
   passDescriptor.colorAttachments[0].loadAction  = MTLLoadActionClear;
   passDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
