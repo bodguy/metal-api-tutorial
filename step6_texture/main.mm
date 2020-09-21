@@ -19,7 +19,7 @@ float deg_to_rad(float degrees) { return degrees * degrees_to_radians; }
 typedef struct {
   int width, height;
   int components;
-  unsigned char* buffer;
+  uint8_t* buffer;
   void destroy() { 
     stbi_image_free(buffer);
   }
@@ -294,7 +294,7 @@ void doRender()
   id<MTLTexture> framebufferTexture = drawable.texture;
 
   MTLRenderPassDescriptor* passDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
-  passDescriptor.colorAttachments[0].clearColor  = MTLClearColorMake(0, 0, 0, 1);
+  passDescriptor.colorAttachments[0].clearColor  = MTLClearColorMake(1, 0, 0, 1);
   passDescriptor.colorAttachments[0].texture     = framebufferTexture;
   passDescriptor.colorAttachments[0].loadAction  = MTLLoadActionClear;
   passDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
@@ -428,19 +428,20 @@ int renderInit()
   }
 
   MTLTextureDescriptor *textureDescriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
-                                                   width:texture.width
-                                                   height:texture.height
+                                                   width:texture.width-1
+                                                   height:texture.height-1
                                                    mipmapped:YES];
   textureDescriptor.usage = MTLTextureUsageShaderRead;
   g_MTLTexture = [g_mtlDevice newTextureWithDescriptor:textureDescriptor];
-  MTLRegion region = MTLRegionMake2D(0, 0, texture.width, texture.height);
-  int rowPerBytes = texture.width * 4;
+  MTLRegion region = MTLRegionMake2D(0, 0, texture.width-1, texture.height-1);
+  int rowPerBytes = texture.width-1 * texture.components;
   [g_MTLTexture replaceRegion:region mipmapLevel:0 withBytes:texture.buffer bytesPerRow:rowPerBytes];
   texture.destroy();
 
   MTLSamplerDescriptor *samplerDescriptor = [MTLSamplerDescriptor new];
   samplerDescriptor.minFilter = MTLSamplerMinMagFilterNearest;
   samplerDescriptor.magFilter = MTLSamplerMinMagFilterLinear;
+  samplerDescriptor.mipFilter = MTLSamplerMipFilterLinear;
   samplerDescriptor.sAddressMode = MTLSamplerAddressModeRepeat;
   samplerDescriptor.tAddressMode = MTLSamplerAddressModeRepeat;
   
@@ -541,7 +542,7 @@ static CVReturn displayLinkCallback(
                                               styleMask:style
                                                 backing:NSBackingStoreBuffered
                                                   defer:YES];
-  [self.window setTitle:@"Metal C++ Example5"];
+  [self.window setTitle:@"Metal C++ Example6"];
   [self.window setOpaque:YES];
   [self.window setContentView:g_nsView];
   [self.window makeMainWindow];
