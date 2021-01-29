@@ -226,7 +226,6 @@ typedef struct {
 typedef struct
 {
     vector_float4 position;
-    vector_float4 color;
     vector_float2 texCoords;
 } VertexSemantic;
 
@@ -389,14 +388,14 @@ int renderInit()
 
   static const VertexSemantic vertices[] =
   {
-      { .position = { -1,  1,  1, 1 }, .color = { 1, 0, 0, 1 }, .texCoords = { 0.25, 0.25 } },
-      { .position = { -1, -1,  1, 1 }, .color = { 0, 1, 0, 1 }, .texCoords = { 0.25, 0.50 } },
-      { .position = {  1, -1,  1, 1 }, .color = { 0, 0, 1, 1 }, .texCoords = { 0.50, 0.50 } },
-      { .position = {  1,  1,  1, 1 }, .color = { 1, 1, 0, 1 }, .texCoords = { 0.50, 0.25 } },
-      { .position = { -1,  1, -1, 1 }, .color = { 1, 0, 1, 1 }, .texCoords = { 0.25, 0.00 } },
-      { .position = { -1, -1, -1, 1 }, .color = { 0, 1, 1, 1 }, .texCoords = { 0.25, 0.75 } },
-      { .position = {  1, -1, -1, 1 }, .color = { 1, 1, 1, 1 }, .texCoords = { 0.50, 0.75 } },
-      { .position = {  1,  1, -1, 1 }, .color = { 1, 0, 0, 1 }, .texCoords = { 0.75, 0.25 } },
+      { .position = { -1,  1,  1, 1 }, .texCoords = { 0.25, 0.25 } },
+      { .position = { -1, -1,  1, 1 }, .texCoords = { 0.25, 0.50 } },
+      { .position = {  1, -1,  1, 1 }, .texCoords = { 0.50, 0.50 } },
+      { .position = {  1,  1,  1, 1 }, .texCoords = { 0.50, 0.25 } },
+      { .position = { -1,  1, -1, 1 }, .texCoords = { 0.25, 0.00 } },
+      { .position = { -1, -1, -1, 1 }, .texCoords = { 0.25, 0.75 } },
+      { .position = {  1, -1, -1, 1 }, .texCoords = { 0.50, 0.75 } },
+      { .position = {  1,  1, -1, 1 }, .texCoords = { 0.75, 0.25 } },
   };
 
   static const uint16_t indices[] =
@@ -434,7 +433,7 @@ int renderInit()
   textureDescriptor.usage = MTLTextureUsageShaderRead;
   g_MTLTexture = [g_mtlDevice newTextureWithDescriptor:textureDescriptor];
   MTLRegion region = MTLRegionMake2D(0, 0, texture.width-1, texture.height-1);
-  int rowPerBytes = texture.width-1 * texture.components;
+  int rowPerBytes = (texture.width-1) * texture.components;
   [g_MTLTexture replaceRegion:region mipmapLevel:0 withBytes:texture.buffer bytesPerRow:rowPerBytes];
   texture.destroy();
 
