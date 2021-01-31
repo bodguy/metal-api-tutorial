@@ -81,9 +81,13 @@ bool read_file(const std::string &filepath, std::string &out_source) {
     return true;
 }
 
-void doRender() {
-    id <CAMetalDrawable> drawable = [g_nsView.metalLayer nextDrawable];
+void doUpdate(float dt) {
+    g_fragmentUniforms.brightness = 0.5f * std::cos(elapsedTime) + 0.5f;
+    memcpy([g_uniformBuffer contents], &g_fragmentUniforms, sizeof(FragmentUniforms));
+    elapsedTime += dt;
+}
 
+void doRender() {
     t1 = high_resolution_clock::now();
     float deltaTime = std::chrono::duration_cast<millisecond>(t2 - t1).count() * 0.001;
     t2 = t1;
@@ -91,11 +95,9 @@ void doRender() {
     // wait
     sem.wait();
 
-    // update logic
-    g_fragmentUniforms.brightness = 0.5f * std::cos(elapsedTime) + 0.5f;
-    memcpy([g_uniformBuffer contents], &g_fragmentUniforms, sizeof(FragmentUniforms));
-    elapsedTime += deltaTime;
+    doUpdate(deltaTime);
 
+    id <CAMetalDrawable> drawable = [g_nsView.metalLayer nextDrawable];
     id <MTLCommandBuffer> commandBuffer = [g_mtlCommandQueue commandBuffer];
     MTLRenderPassDescriptor *passDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
     id <MTLTexture> framebufferTexture = drawable.texture;
@@ -113,32 +115,51 @@ void doRender() {
     [commandBuffer presentDrawable:drawable];
 
     // signal
-    [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> _) {
+    [commandBuffer addCompletedHandler:^(id <MTLCommandBuffer> _) {
       sem.notify();
     }];
 
     [commandBuffer commit];
 }
 
-bool init() {
-    g_mtlDevice = MTLCreateSystemDefaultDevice();
-    g_mtlCommandQueue = [g_mtlDevice newCommandQueue];
-
+bool loadShader(const std::string &filename, id <MTLLibrary> &library) {
     MTLCompileOptions *compileOptions = [MTLCompileOptions new];
     compileOptions.languageVersion = MTLLanguageVersion1_1;
     NSError *compileError = nullptr;
-    std::string shaderSource;
-    if (!read_file("../basic.metal", shaderSource)) {
+    std::string source;
+    if (!read_file(filename, source)) {
         NSLog(@"Shader not found");
         return false;
     }
-    id <MTLLibrary> library = [g_mtlDevice newLibraryWithSource:[NSString stringWithFormat:@"%s", shaderSource.c_str()] options:compileOptions error:&compileError];
+    library = [g_mtlDevice newLibraryWithSource:[NSString stringWithFormat:@"%s", source.c_str()] options:compileOptions error:&compileError];
     if (!library) {
         NSLog(@"can't create library: %@", compileError);
         return false;
     }
     [compileOptions release];
     [compileError release];
+
+    return true;
+}
+
+bool init() {
+    g_mtlDevice = MTLCreateSystemDefaultDevice();
+    g_mtlCommandQueue = [g_mtlDevice newCommandQueue];
+
+    id <MTLLibrary> vs_library, fs_library;
+    if (!loadShader("../basic_vs.metal", vs_library)) {
+        return false;
+    }
+    if (!loadShader("../basic_fs.metal", fs_library)) {
+        return false;
+    }
+
+    MTLRenderPipelineDescriptor *pipelineDescriptor = [MTLRenderPipelineDescriptor new];
+    pipelineDescriptor.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    pipelineDescriptor.vertexFunction = [vs_library newFunctionWithName:@"main0"];
+    pipelineDescriptor.fragmentFunction = [fs_library newFunctionWithName:@"main0"];
+    [vs_library release];
+    [fs_library release];
 
     MTLVertexDescriptor *vertexDescriptor = [MTLVertexDescriptor new];
     vertexDescriptor.attributes[0].format = MTLVertexFormatFloat4;
@@ -148,14 +169,8 @@ bool init() {
     vertexDescriptor.attributes[1].bufferIndex = 0;
     vertexDescriptor.attributes[1].offset = 16;
     vertexDescriptor.layouts[0].stride = 32;
-
-    MTLRenderPipelineDescriptor *pipelineDescriptor = [MTLRenderPipelineDescriptor new];
-    pipelineDescriptor.vertexFunction = [library newFunctionWithName:@"main0"];
-    pipelineDescriptor.fragmentFunction = [library newFunctionWithName:@"main1"];
-    pipelineDescriptor.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
     [pipelineDescriptor setVertexDescriptor:vertexDescriptor];
     [vertexDescriptor release];
-    [library release];
 
     NSError *pipelineError = nullptr;
     MTLPipelineOption option = MTLPipelineOptionBufferTypeInfo | MTLPipelineOptionArgumentInfo;
@@ -264,7 +279,6 @@ static CVReturn displayLinkCallback(
 
 - (void)keyDown:(NSEvent *)anEvent {
     unsigned short keyCode = [anEvent keyCode];
-    printf("Key code: %d\n", keyCode);
     if (keyCode == 53 || keyCode == 49) {
         [self close];
     }
