@@ -2,10 +2,9 @@
 
 using namespace metal;
 
-typedef struct
-{
-    float4 position;
-    float4 color;
+typedef struct {
+    float4 position [[attribute(0)]];
+    float4 color [[attribute(1)]];
 } VertexIn;
 
 typedef struct {
@@ -17,13 +16,10 @@ typedef struct {
     float brightness;
 } FragmentUniforms;
 
-vertex VertexOut main0(
-    const device VertexIn *vertices [[buffer(0)]], 
-    uint vid [[vertex_id]]
-) {
+vertex VertexOut main0(VertexIn verts [[stage_in]]) {
     VertexOut out;
-    out.position = vertices[vid].position;
-    out.color = vertices[vid].color;
+    out.position = verts.position;
+    out.color = verts.color;
     return out;
 }
 

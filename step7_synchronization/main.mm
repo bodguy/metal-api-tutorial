@@ -4,6 +4,33 @@
 #include <string>
 #include <cmath>
 #include <chrono>
+#include <mutex>
+
+class Semaphore {
+public:
+  Semaphore(int count_ = 0) : count{count_} {}
+
+  inline void notify() {
+      std::unique_lock<std::mutex> lock(mtx);
+      count++;
+      //notify the waiting thread
+      cv.notify_one();
+  }
+
+  inline void wait() {
+      std::unique_lock<std::mutex> lock(mtx);
+      while (count == 0) {
+          //wait on the mutex until notify is called
+          cv.wait(lock);
+      }
+      count--;
+  }
+
+private:
+  std::mutex mtx;
+  std::condition_variable cv;
+  int count;
+};
 
 struct FragmentUniforms {
   FragmentUniforms(float _brightness) : brightness{_brightness} {}
@@ -11,18 +38,24 @@ struct FragmentUniforms {
   float brightness;
 };
 
-static const int k_WindowWidth = 800;
-static const int k_WindowHeight = 600;
-
 @class MetalView;
 MetalView *g_nsView;
+
+using high_resolution_clock = std::chrono::high_resolution_clock;
+using hr_time_point = std::chrono::time_point<high_resolution_clock>;
+using millisecond = std::chrono::duration<float, std::milli>;
 
 id <MTLDevice> g_mtlDevice;
 id <MTLCommandQueue> g_mtlCommandQueue;
 id <MTLRenderPipelineState> g_mtlPipelineState;
 id <MTLBuffer> g_vertexBuffer;
 id <MTLBuffer> g_uniformBuffer;
+static const int k_WindowWidth = 800;
+static const int k_WindowHeight = 600;
 static FragmentUniforms g_fragmentUniforms{1.f};
+static Semaphore sem{1};
+hr_time_point t1, t2;
+float elapsedTime = 0.f;
 
 @interface AppDelegate : NSObject <NSApplicationDelegate>
 @property(strong, nonatomic) NSWindow *window;
@@ -48,12 +81,6 @@ bool read_file(const std::string &filepath, std::string &out_source) {
     return true;
 }
 
-using high_resolution_clock = std::chrono::high_resolution_clock;
-using hr_time_point = std::chrono::time_point<high_resolution_clock>;
-using millisecond = std::chrono::duration<float, std::milli>;
-hr_time_point t1, t2;
-float elapsedTime = 0.f;
-
 void doRender() {
     id <CAMetalDrawable> drawable = [g_nsView.metalLayer nextDrawable];
 
@@ -62,6 +89,7 @@ void doRender() {
     t2 = t1;
 
     // wait
+    sem.wait();
 
     // update logic
     g_fragmentUniforms.brightness = 0.5f * std::cos(elapsedTime) + 0.5f;
@@ -83,12 +111,16 @@ void doRender() {
     [commandEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
     [commandEncoder endEncoding];
     [commandBuffer presentDrawable:drawable];
+
     // signal
+    [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> _) {
+      sem.notify();
+    }];
 
     [commandBuffer commit];
 }
 
-int init() {
+bool init() {
     g_mtlDevice = MTLCreateSystemDefaultDevice();
     g_mtlCommandQueue = [g_mtlDevice newCommandQueue];
 
@@ -98,30 +130,43 @@ int init() {
     std::string shaderSource;
     if (!read_file("../basic.metal", shaderSource)) {
         NSLog(@"Shader not found");
-        return EXIT_FAILURE;
+        return false;
     }
     id <MTLLibrary> library = [g_mtlDevice newLibraryWithSource:[NSString stringWithFormat:@"%s", shaderSource.c_str()] options:compileOptions error:&compileError];
     if (!library) {
         NSLog(@"can't create library: %@", compileError);
-        return EXIT_FAILURE;
+        return false;
     }
     [compileOptions release];
+    [compileError release];
+
+    MTLVertexDescriptor *vertexDescriptor = [MTLVertexDescriptor new];
+    vertexDescriptor.attributes[0].format = MTLVertexFormatFloat4;
+    vertexDescriptor.attributes[0].bufferIndex = 0;
+    vertexDescriptor.attributes[0].offset = 0;
+    vertexDescriptor.attributes[1].format = MTLVertexFormatFloat4;
+    vertexDescriptor.attributes[1].bufferIndex = 0;
+    vertexDescriptor.attributes[1].offset = 16;
+    vertexDescriptor.layouts[0].stride = 32;
 
     MTLRenderPipelineDescriptor *pipelineDescriptor = [MTLRenderPipelineDescriptor new];
     pipelineDescriptor.vertexFunction = [library newFunctionWithName:@"main0"];
     pipelineDescriptor.fragmentFunction = [library newFunctionWithName:@"main1"];
     pipelineDescriptor.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    [pipelineDescriptor setVertexDescriptor:vertexDescriptor];
+    [vertexDescriptor release];
     [library release];
 
-    NSError *error = nullptr;
+    NSError *pipelineError = nullptr;
     MTLPipelineOption option = MTLPipelineOptionBufferTypeInfo | MTLPipelineOptionArgumentInfo;
     MTLRenderPipelineReflection *reflectionObj;
-    g_mtlPipelineState = [g_mtlDevice newRenderPipelineStateWithDescriptor:pipelineDescriptor options:option reflection:&reflectionObj error:&error];
+    g_mtlPipelineState = [g_mtlDevice newRenderPipelineStateWithDescriptor:pipelineDescriptor options:option reflection:&reflectionObj error:&pipelineError];
     if (!g_mtlPipelineState) {
-        NSLog(@"Failed to create render pipeline state: %@", error);
-        return EXIT_FAILURE;
+        NSLog(@"Failed to create render pipeline state: %@", pipelineError);
+        return false;
     }
     [pipelineDescriptor release];
+    [pipelineError release];
 
     for (MTLArgument *arg in reflectionObj.vertexArguments) {
         NSLog(@"Found arg: %@\n", arg.name);
@@ -157,7 +202,7 @@ int init() {
     g_vertexBuffer = [g_mtlDevice newBufferWithBytes:quadVertexData length:sizeof(quadVertexData) options:MTLResourceOptionCPUCacheModeDefault];
     g_uniformBuffer = [g_mtlDevice newBufferWithBytes:&g_fragmentUniforms length:sizeof(FragmentUniforms) options:MTLResourceOptionCPUCacheModeDefault];
 
-    return EXIT_SUCCESS;
+    return true;
 }
 
 void renderDestroy() {
@@ -171,7 +216,7 @@ void renderDestroy() {
 int main(int argc, char *argv[]) {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
 
-    if (init() != EXIT_SUCCESS) {
+    if (!init()) {
         return EXIT_FAILURE;
     }
 
@@ -241,7 +286,7 @@ static CVReturn displayLinkCallback(
                                                 styleMask:style
                                                   backing:NSBackingStoreBuffered
                                                     defer:YES];
-    [self.window setTitle:@"Metal C++ Example6"];
+    [self.window setTitle:@"Metal C++ Example7"];
     [self.window setOpaque:YES];
     [self.window setContentView:g_nsView];
     [self.window makeMainWindow];
