@@ -184,7 +184,7 @@ bool init() {
     [pipelineError release];
 
     for (MTLArgument *arg in reflectionObj.vertexArguments) {
-        NSLog(@"Found arg: %@\n", arg.name);
+        printf("Found arg: %s, isActive: %d\n", [arg.name UTF8String], arg.active);
 
         if (arg.bufferDataType == MTLDataTypeStruct) {
             for (MTLStructMember *uniform in arg.bufferStructType.members) {
@@ -194,8 +194,9 @@ bool init() {
         }
     }
 
+    printf("===================================\n");
     for (MTLArgument *arg in reflectionObj.fragmentArguments) {
-        NSLog(@"Found arg: %@\n", arg.name);
+        printf("Found arg: %s, isActive: %d\n", [arg.name UTF8String], arg.active);
 
         if (arg.bufferDataType == MTLDataTypeStruct) {
             for (MTLStructMember *uniform in arg.bufferStructType.members) {
