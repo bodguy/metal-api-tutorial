@@ -431,7 +431,7 @@ int init() {
                                   options:MTLResourceOptionCPUCacheModeDefault];
 
   Texture texture;
-  if (!load_texture_from_file("../texture.png", texture)) {
+  if (!load_texture_from_file("../cube.png", texture)) {
     fprintf(stderr, "Texture load failed\n");
     return EXIT_FAILURE;
   }
@@ -446,8 +446,8 @@ int init() {
   texture.destroy();
 
   MTLSamplerDescriptor *samplerDescriptor = [MTLSamplerDescriptor new];
-  samplerDescriptor.minFilter = MTLSamplerMinMagFilterLinear;
-  samplerDescriptor.magFilter = MTLSamplerMinMagFilterLinear;
+  samplerDescriptor.minFilter = MTLSamplerMinMagFilterNearest;
+  samplerDescriptor.magFilter = MTLSamplerMinMagFilterNearest;
   samplerDescriptor.mipFilter = MTLSamplerMipFilterNearest;
   samplerDescriptor.maxAnisotropy = 1;
   samplerDescriptor.sAddressMode = MTLSamplerAddressModeClampToEdge;
