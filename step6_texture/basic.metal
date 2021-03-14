@@ -3,7 +3,7 @@
 using namespace metal;
 
 typedef struct {
-    float4 position;
+    float3 position;
     float2 texCoords;
 } VertexIn;
 
@@ -22,7 +22,7 @@ vertex VertexOut render_vertex(
     uint vid [[vertex_id]]
 ) {
     VertexOut out;
-    out.position = uniforms.model_view_projection_matrix * vertices[vid].position;
+    out.position = uniforms.model_view_projection_matrix * float4(vertices[vid].position, 1);
     out.texCoords = vertices[vid].texCoords;
     return out;
 }
