@@ -456,9 +456,9 @@ int init() {
   texture.destroy();
 
   MTLSamplerDescriptor *samplerDescriptor = [MTLSamplerDescriptor new];
-  samplerDescriptor.minFilter = MTLSamplerMinMagFilterNearest;
-  samplerDescriptor.magFilter = MTLSamplerMinMagFilterNearest;
-  samplerDescriptor.mipFilter = MTLSamplerMipFilterNearest;
+  samplerDescriptor.minFilter = MTLSamplerMinMagFilterLinear;
+  samplerDescriptor.magFilter = MTLSamplerMinMagFilterLinear;
+  samplerDescriptor.mipFilter = MTLSamplerMipFilterLinear;
   samplerDescriptor.maxAnisotropy = 1;
   samplerDescriptor.sAddressMode = MTLSamplerAddressModeClampToEdge;
   samplerDescriptor.tAddressMode = MTLSamplerAddressModeClampToEdge;
@@ -555,7 +555,7 @@ static CVReturn displayLinkCallback(
                                                 styleMask:style
                                                   backing:NSBackingStoreBuffered
                                                     defer:YES];
-    [self.window setTitle:@"Metal C++ Example7"];
+    [self.window setTitle:@"Metal C++ Example 6 - Texture"];
     [self.window setOpaque:YES];
     [self.window setContentView:g_nsView];
     [self.window makeMainWindow];
