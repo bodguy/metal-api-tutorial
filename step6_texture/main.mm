@@ -270,7 +270,7 @@ const matrix_float4x4 projectionMatrix = matrix_float4x4::matrix_from_perspectiv
 void doUpdate() { 
   rotationAngle++;
 	const matrix_float4x4 modelMatrix = matrix_float4x4::rotation_matrix_axis(deg_to_rad(rotationAngle), {0, 1, 0})
-    * matrix_float4x4::matrix_float4x4_uniform_scale({1, 1, 1});
+    * matrix_float4x4::matrix_float4x4_uniform_scale({0.5, 0.5, 0.5});
   g_uniforms.model_view_projection_matrix = modelMatrix * viewMatrix * projectionMatrix;
 
   memcpy([g_uniformBuffer contents], &g_uniforms, sizeof(g_uniforms));
@@ -288,7 +288,7 @@ void doRender()
   id<MTLTexture> framebufferTexture = drawable.texture;
 
   MTLRenderPassDescriptor* passDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
-  passDescriptor.colorAttachments[0].clearColor  = MTLClearColorMake(1, 0, 0, 1);
+  passDescriptor.colorAttachments[0].clearColor  = MTLClearColorMake(0, 0, 0, 1);
   passDescriptor.colorAttachments[0].texture     = framebufferTexture;
   passDescriptor.colorAttachments[0].loadAction  = MTLLoadActionClear;
   passDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
@@ -354,6 +354,16 @@ int init() {
   pipelineDescriptor.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
   pipelineDescriptor.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
   [library release];
+
+  MTLVertexDescriptor* vertexDescriptor = [MTLVertexDescriptor new];
+  vertexDescriptor.attributes[0].format = MTLVertexFormatFloat3;
+  vertexDescriptor.attributes[0].bufferIndex = 0;
+  vertexDescriptor.attributes[0].offset = 0;
+  vertexDescriptor.attributes[1].format = MTLVertexFormatFloat2;
+  vertexDescriptor.attributes[1].bufferIndex = 0;
+  vertexDescriptor.attributes[1].offset = 12;
+  vertexDescriptor.layouts[0].stride = 20;
+  [pipelineDescriptor setVertexDescriptor:vertexDescriptor];
 
   MTLDepthStencilDescriptor* depthStencilDescriptor = [MTLDepthStencilDescriptor new];
   depthStencilDescriptor.depthCompareFunction = MTLCompareFunctionLess;
@@ -441,7 +451,7 @@ int init() {
   textureDescriptor.height = static_cast<NSUInteger>(texture.height);
   textureDescriptor.usage = MTLTextureUsageShaderRead;
   g_MTLTexture = [g_mtlDevice newTextureWithDescriptor:textureDescriptor];
-  MTLRegion region = MTLRegionMake2D(0, 0, static_cast<NSUInteger>(texture.width), static_cast<NSUInteger>(texture.height));
+  MTLRegion region = { { 0, 0, 0}, { static_cast<NSUInteger>(texture.width), static_cast<NSUInteger>(texture.height), 1} };
   [g_MTLTexture replaceRegion:region mipmapLevel:0 withBytes:texture.buffer bytesPerRow:static_cast<NSUInteger>(4 * texture.width)];
   texture.destroy();
 

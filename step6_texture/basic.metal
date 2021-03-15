@@ -3,8 +3,8 @@
 using namespace metal;
 
 typedef struct {
-    float3 position;
-    float2 texCoords;
+    float3 position [[attribute(0)]];
+    float2 texCoords [[attribute(1)]];
 } VertexIn;
 
 typedef struct {
@@ -17,13 +17,12 @@ typedef struct {
 } Uniforms;
 
 vertex VertexOut render_vertex(
-    const device VertexIn *vertices [[buffer(0)]], 
-    constant Uniforms &uniforms [[buffer(1)]],
-    uint vid [[vertex_id]]
+    VertexIn verts [[stage_in]],
+    constant Uniforms &uniforms [[buffer(1)]]
 ) {
     VertexOut out;
-    out.position = uniforms.model_view_projection_matrix * float4(vertices[vid].position, 1);
-    out.texCoords = vertices[vid].texCoords;
+    out.position = uniforms.model_view_projection_matrix * float4(verts.position, 1);
+    out.texCoords = verts.texCoords;
     return out;
 }
 
