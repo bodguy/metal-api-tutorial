@@ -46,7 +46,7 @@ int main(int argc, const char * argv[]) {
         id<MTLCommandQueue> commandQueue = [g_mtlDevice newCommandQueue];
 
         id <MTLLibrary> computeLibrary;
-        if (!loadShader("../basic.metal", computeLibrary)) {
+        if (!loadShader("./basic.metal", computeLibrary)) {
             return -1;
         }
 

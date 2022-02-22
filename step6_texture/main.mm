@@ -326,7 +326,7 @@ int init() {
 
   g_mtlCommandQueue = [g_mtlDevice newCommandQueue];
 	std::string shaderCode;
-	if (!read_file("../basic.metal", shaderCode)) {
+	if (!read_file("./basic.metal", shaderCode)) {
 		fprintf(stderr, "Shader not found");
 		return EXIT_FAILURE;
 	}
@@ -441,7 +441,7 @@ int init() {
                                   options:MTLResourceOptionCPUCacheModeDefault];
 
   Texture texture;
-  if (!load_texture_from_file("../cube.png", texture)) {
+  if (!load_texture_from_file("./cube.png", texture)) {
     fprintf(stderr, "Texture load failed\n");
     return EXIT_FAILURE;
   }
