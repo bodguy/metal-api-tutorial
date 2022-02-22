@@ -24,7 +24,7 @@ Minimal bare metal [Apple Metal Graphics API](https://developer.apple.com/kr/met
 
 <img src="./picture/step4.gif" width="400" height="400" />
 
-- step5_goiing3d
+- step5_going3d
 
 <img src="./picture/step5.gif" width="400" height="400" />
 

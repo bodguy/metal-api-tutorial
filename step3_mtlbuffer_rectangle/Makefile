@@ -1,5 +1,5 @@
 TARGET		= metal-cpp
-CXXFLAGS += -O0 -g -std=c++1z
+CXXFLAGS += -O2 -g -std=c++1z
 LFLAGS   += -framework Cocoa -framework Metal -framework QuartzCore
 $(TARGET): main.mm
 	$(CXX) $(CXXFLAGS) main.mm $(LFLAGS) -o $(TARGET)
