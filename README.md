@@ -5,12 +5,34 @@ Minimal bare metal [Apple Metal Graphics API](https://developer.apple.com/kr/met
 # Sample code
 
 - step0_simple_window
+
+<img src="./picture/step0.png" width="400" height="400" />
+
 - step1_basic_setup
+
+<img src="./picture/step1.png" width="400" height="400" />
+
 - step2_triangle
+
+<img src="./picture/step2.png" width="400" height="400" />
+
 - step3_mtlbuffer_rectangle
+
+<img src="./picture/step3.png" width="400" height="400" />
+
 - step4_uniform_update
+
+<img src="./picture/step4.gif" width="400" height="400" />
+
 - step5_goiing3d
+
+<img src="./picture/step5.gif" width="400" height="400" />
+
 - step6_texture
+
+<img src="./picture/step6.gif" width="400" height="400" />
+
+
 - step7_synchronization
 - step8_gpgpu
 - step9_multipass
