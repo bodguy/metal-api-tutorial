@@ -301,7 +301,7 @@ static CVReturn displayLinkCallback(
                                                 styleMask:style
                                                   backing:NSBackingStoreBuffered
                                                     defer:YES];
-    [self.window setTitle:@"Metal C++ Example7"];
+    [self.window setTitle:@"Metal C++ Example7 - Synchronization"];
     [self.window setOpaque:YES];
     [self.window setContentView:g_nsView];
     [self.window makeMainWindow];

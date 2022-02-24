@@ -47,9 +47,12 @@ using millisecond = std::chrono::duration<float, std::milli>;
 
 id <MTLDevice> g_mtlDevice;
 id <MTLCommandQueue> g_mtlCommandQueue;
-id <MTLRenderPipelineState> g_mtlPipelineState;
+id <MTLRenderPipelineState> g_baseRenderPipelineState;
+id <MTLRenderPipelineState> g_finalRenderPipelineState;
 id <MTLBuffer> g_vertexBuffer;
+id <MTLBuffer> g_vertexBuffer2;
 id <MTLBuffer> g_uniformBuffer;
+id<MTLTexture> g_baseColorTexture;
 static const int k_WindowWidth = 800;
 static const int k_WindowHeight = 600;
 static FragmentUniforms g_fragmentUniforms{1.f};
@@ -81,47 +84,6 @@ bool read_file(const std::string &filepath, std::string &out_source) {
     return true;
 }
 
-void doUpdate(float dt) {
-    g_fragmentUniforms.brightness = 0.5f * std::cos(elapsedTime) + 0.5f;
-    memcpy([g_uniformBuffer contents], &g_fragmentUniforms, sizeof(FragmentUniforms));
-    elapsedTime += dt;
-}
-
-void doRender() {
-    t1 = high_resolution_clock::now();
-    float deltaTime = std::chrono::duration_cast<millisecond>(t2 - t1).count() * 0.001;
-    t2 = t1;
-
-    // wait
-    sem.wait();
-
-    doUpdate(deltaTime);
-
-    id <CAMetalDrawable> drawable = [g_nsView.metalLayer nextDrawable];
-    id <MTLCommandBuffer> commandBuffer = [g_mtlCommandQueue commandBuffer];
-    MTLRenderPassDescriptor *passDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
-    id <MTLTexture> framebufferTexture = drawable.texture;
-    passDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
-    passDescriptor.colorAttachments[0].texture = framebufferTexture;
-    passDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
-    passDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
-
-    id <MTLRenderCommandEncoder> commandEncoder = [commandBuffer renderCommandEncoderWithDescriptor:passDescriptor];
-    [commandEncoder setRenderPipelineState:g_mtlPipelineState];
-    [commandEncoder setVertexBuffer:g_vertexBuffer offset:0 atIndex:0];
-    [commandEncoder setFragmentBuffer:g_uniformBuffer offset:0 atIndex:0];
-    [commandEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
-    [commandEncoder endEncoding];
-    [commandBuffer presentDrawable:drawable];
-
-    // signal
-    [commandBuffer addCompletedHandler:^(id <MTLCommandBuffer> _) {
-      sem.notify();
-    }];
-
-    [commandBuffer commit];
-}
-
 bool loadShader(const std::string &filename, id <MTLLibrary> &library) {
     MTLCompileOptions *compileOptions = [MTLCompileOptions new];
     compileOptions.languageVersion = MTLLanguageVersion1_1;
@@ -142,10 +104,69 @@ bool loadShader(const std::string &filename, id <MTLLibrary> &library) {
     return true;
 }
 
-bool init() {
-    g_mtlDevice = MTLCreateSystemDefaultDevice();
-    g_mtlCommandQueue = [g_mtlDevice newCommandQueue];
+void baseRenderPass(id<MTLCommandBuffer> commandBuffer) {
+    // base render pass
+    MTLRenderPassDescriptor *baseRenderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+    id <MTLRenderCommandEncoder> commandEncoder = [commandBuffer renderCommandEncoderWithDescriptor:baseRenderPassDescriptor];
+    [commandEncoder setRenderPipelineState:g_baseRenderPipelineState];
+    [commandEncoder setVertexBuffer:g_vertexBuffer offset:0 atIndex:0];
+    [commandEncoder setFragmentBuffer:g_uniformBuffer offset:0 atIndex:0];
+    [commandEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
+    [commandEncoder endEncoding];
 
+    baseRenderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 1.0, 0.0, 1.0);
+    baseRenderPassDescriptor.colorAttachments[0].texture = g_baseColorTexture;
+    baseRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
+    baseRenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+}
+
+void finalRenderPass(MetalView* mtkView, id<MTLCommandBuffer> commandBuffer) {
+    // final render pass: render to the views drawable texture
+    MTLRenderPassDescriptor* finalRenderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+    id <MTLRenderCommandEncoder> commandEncoder = [commandBuffer renderCommandEncoderWithDescriptor:finalRenderPassDescriptor];
+    [commandEncoder setRenderPipelineState:g_finalRenderPipelineState];
+    [commandEncoder setVertexBuffer:g_vertexBuffer2 offset:0 atIndex:0];
+    [commandEncoder setFragmentTexture:g_baseColorTexture atIndex:0];
+    [commandEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6]; // quad
+    [commandEncoder endEncoding];
+
+    id <CAMetalDrawable> drawable = [g_nsView.metalLayer nextDrawable];
+    finalRenderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(1.0, 0.0, 0.0, 1.0);
+    finalRenderPassDescriptor.colorAttachments[0].texture = drawable.texture;
+    finalRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
+    finalRenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+    [commandBuffer presentDrawable:drawable];
+}
+
+void doUpdate(float dt) {
+    g_fragmentUniforms.brightness = 0.5f * std::cos(elapsedTime) + 0.5f;
+    memcpy([g_uniformBuffer contents], &g_fragmentUniforms, sizeof(FragmentUniforms));
+    elapsedTime += dt;
+}
+
+void doRender() {
+    t1 = high_resolution_clock::now();
+    float deltaTime = std::chrono::duration_cast<millisecond>(t2 - t1).count() * 0.001;
+    t2 = t1;
+
+    // wait
+    sem.wait();
+
+    doUpdate(deltaTime);
+
+    id <MTLCommandBuffer> commandBuffer = [g_mtlCommandQueue commandBuffer];
+    baseRenderPass(commandBuffer);
+    finalRenderPass(g_nsView, commandBuffer);
+
+    // signal
+    [commandBuffer addCompletedHandler:^(id <MTLCommandBuffer> _) {
+      sem.notify();
+    }];
+
+    [commandBuffer commit];
+}
+
+bool initBaseRenderPipelineState(id <MTLRenderPipelineState> renderPipelineState) {
     id <MTLLibrary> vs_library, fs_library;
     if (!loadShader("./basic_vs.metal", vs_library)) {
         return false;
@@ -162,60 +183,112 @@ bool init() {
     [fs_library release];
 
     MTLVertexDescriptor *vertexDescriptor = [MTLVertexDescriptor new];
-    vertexDescriptor.attributes[0].format = MTLVertexFormatFloat4;
+    vertexDescriptor.attributes[0].format = MTLVertexFormatFloat3;
     vertexDescriptor.attributes[0].bufferIndex = 0;
     vertexDescriptor.attributes[0].offset = 0;
     vertexDescriptor.attributes[1].format = MTLVertexFormatFloat4;
     vertexDescriptor.attributes[1].bufferIndex = 0;
-    vertexDescriptor.attributes[1].offset = 16;
-    vertexDescriptor.layouts[0].stride = 32;
+    vertexDescriptor.attributes[1].offset = 12;
+    vertexDescriptor.layouts[0].stride = 28;
     [pipelineDescriptor setVertexDescriptor:vertexDescriptor];
     [vertexDescriptor release];
 
     NSError *pipelineError = nullptr;
-    MTLPipelineOption option = MTLPipelineOptionBufferTypeInfo | MTLPipelineOptionArgumentInfo;
-    MTLRenderPipelineReflection *reflectionObj;
-    g_mtlPipelineState = [g_mtlDevice newRenderPipelineStateWithDescriptor:pipelineDescriptor options:option reflection:&reflectionObj error:&pipelineError];
-    if (!g_mtlPipelineState) {
+    renderPipelineState = [g_mtlDevice newRenderPipelineStateWithDescriptor:pipelineDescriptor error:&pipelineError];
+    if (!renderPipelineState) {
         NSLog(@"Failed to create render pipeline state: %@", pipelineError);
         return false;
     }
     [pipelineDescriptor release];
     [pipelineError release];
 
-    for (MTLArgument *arg in reflectionObj.vertexArguments) {
-        printf("Found arg: %s, isActive: %d\n", [arg.name UTF8String], arg.active);
+    return true;
+}
 
-        if (arg.bufferDataType == MTLDataTypeStruct) {
-            for (MTLStructMember *uniform in arg.bufferStructType.members) {
-                NSLog(@"\tuniform: %@, type:%lu, location: %lu", uniform.name, (unsigned long) uniform.dataType,
-                      (unsigned long) uniform.offset);
-            }
-        }
+bool initFinalRenderPipelineState(id <MTLRenderPipelineState> renderPipelineState) {
+    id <MTLLibrary> vs_library, fs_library;
+    if (!loadShader("./basic_vs2.metal", vs_library)) {
+        return false;
+    }
+    if (!loadShader("./basic_fs2.metal", fs_library)) {
+        return false;
     }
 
-    printf("===================================\n");
-    for (MTLArgument *arg in reflectionObj.fragmentArguments) {
-        printf("Found arg: %s, isActive: %d\n", [arg.name UTF8String], arg.active);
+    MTLRenderPipelineDescriptor *pipelineDescriptor = [MTLRenderPipelineDescriptor new];
+    pipelineDescriptor.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    pipelineDescriptor.vertexFunction = [vs_library newFunctionWithName:@"main0"];
+    pipelineDescriptor.fragmentFunction = [fs_library newFunctionWithName:@"main0"];
+    [vs_library release];
+    [fs_library release];
 
-        if (arg.bufferDataType == MTLDataTypeStruct) {
-            for (MTLStructMember *uniform in arg.bufferStructType.members) {
-                NSLog(@"\tuniform: %@, type:%lu, location: %lu", uniform.name, (unsigned long) uniform.dataType,
-                      (unsigned long) uniform.offset);
-            }
-        }
+    MTLVertexDescriptor *vertexDescriptor = [MTLVertexDescriptor new];
+    vertexDescriptor.attributes[0].format = MTLVertexFormatFloat3;
+    vertexDescriptor.attributes[0].bufferIndex = 0;
+    vertexDescriptor.attributes[0].offset = 0;
+    vertexDescriptor.attributes[1].format = MTLVertexFormatFloat2;
+    vertexDescriptor.attributes[1].bufferIndex = 0;
+    vertexDescriptor.attributes[1].offset = 12;
+    vertexDescriptor.layouts[0].stride = 20;
+    [pipelineDescriptor setVertexDescriptor:vertexDescriptor];
+    [vertexDescriptor release];
+
+    NSError *pipelineError = nullptr;
+    renderPipelineState = [g_mtlDevice newRenderPipelineStateWithDescriptor:pipelineDescriptor error:&pipelineError];
+    if (!renderPipelineState) {
+        NSLog(@"Failed to create render pipeline state: %@", pipelineError);
+        return false;
+    }
+    [pipelineDescriptor release];
+    [pipelineError release];
+
+    return true;
+}
+
+bool init() {
+    g_mtlDevice = MTLCreateSystemDefaultDevice();
+    g_mtlCommandQueue = [g_mtlDevice newCommandQueue];
+
+    MTLTextureDescriptor* textureDescriptor = [MTLTextureDescriptor new];
+    textureDescriptor.pixelFormat = MTLPixelFormatBGRA8Unorm;
+    textureDescriptor.width = k_WindowWidth;
+    textureDescriptor.height = k_WindowHeight;
+    textureDescriptor.usage = MTLTextureUsageShaderRead;
+    textureDescriptor.textureType = MTLTextureType2D;
+    textureDescriptor.mipmapLevelCount = 1;
+    g_baseColorTexture = [g_mtlDevice newTextureWithDescriptor:textureDescriptor];
+
+    if (!initBaseRenderPipelineState(g_baseRenderPipelineState)) {
+        return false;
+    }
+    if (!initFinalRenderPipelineState(g_finalRenderPipelineState)) {
+        return false;
     }
 
-    float quadVertexData[] = {
-            0.5, -0.5, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0,
-            -0.5, -0.5, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0,
-            -0.5, 0.5, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0,
+    static float quadVertexData[] = {
+            // position (vec3) + color (vec4)
+            0.5, -0.5, 0.0, 1.0, 0.0, 0.0, 1.0,
+            -0.5, -0.5, 0.0, 0.0, 1.0, 0.0, 1.0,
+            -0.5, 0.5, 0.0, 0.0, 0.0, 1.0, 1.0,
 
-            0.5, 0.5, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0,
-            0.5, -0.5, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0,
-            -0.5, 0.5, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0,
+            0.5, 0.5, 0.0, 1.0, 1.0, 0.0, 1.0,
+            0.5, -0.5, 0.0, 1.0, 0.0, 0.0, 1.0,
+            -0.5, 0.5, 0.0, 0.0, 0.0, 1.0, 1.0,
+    };
+    static float quadVertexData2[] = {
+            //	2----------3
+            //	|          |
+            //	1----------0
+            // position (vec3) + textureCoord (vec4)
+            0.5, -0.5, 0.0, 1.0, 0.0,
+            -0.5, -0.5, 0.0, 0.0, 1.0,
+            -0.5, 0.5, 0.0, 0.0, 0.0,
+
+            0.5, 0.5, 0.0, 1.0, 1.0,
+            0.5, -0.5, 0.0, 1.0, 0.0,
+            -0.5, 0.5, 0.0, 0.0, 0.0,
     };
     g_vertexBuffer = [g_mtlDevice newBufferWithBytes:quadVertexData length:sizeof(quadVertexData) options:MTLResourceOptionCPUCacheModeDefault];
+    g_vertexBuffer2 = [g_mtlDevice newBufferWithBytes:quadVertexData2 length:sizeof(quadVertexData2) options:MTLResourceOptionCPUCacheModeDefault];
     g_uniformBuffer = [g_mtlDevice newBufferWithBytes:&g_fragmentUniforms length:sizeof(FragmentUniforms) options:MTLResourceOptionCPUCacheModeDefault];
 
     return true;
@@ -224,7 +297,10 @@ bool init() {
 void renderDestroy() {
     [g_uniformBuffer release];
     [g_vertexBuffer release];
-    [g_mtlPipelineState release];
+    [g_vertexBuffer2 release];
+    [g_baseRenderPipelineState release];
+    [g_finalRenderPipelineState release];
+    [g_baseColorTexture release];
     [g_mtlCommandQueue release];
     [g_mtlDevice release];
 }
@@ -301,7 +377,7 @@ static CVReturn displayLinkCallback(
                                                 styleMask:style
                                                   backing:NSBackingStoreBuffered
                                                     defer:YES];
-    [self.window setTitle:@"Metal C++ Example7"];
+    [self.window setTitle:@"Metal C++ Example9"];
     [self.window setOpaque:YES];
     [self.window setContentView:g_nsView];
     [self.window makeMainWindow];
