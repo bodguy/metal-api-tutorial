@@ -4,13 +4,10 @@ using namespace metal;
 
 typedef struct {
   float4 position [[position]];
-  float4 color;
+  float2 texCoords;
 } VertexOut;
 
-typedef struct {
-  float brightness;
-} FragmentUniforms;
-
-fragment float4 main0(VertexOut in [[stage_in]], constant FragmentUniforms &uniforms [[buffer(0)]]) {
-    return float4(uniforms.brightness * in.color.rgb, in.color.a);
+fragment float4 main0(VertexOut in [[stage_in]], texture2d<float> tex2D [[texture(0)]], sampler sampler2D [[sampler(0)]]) {
+    float4 sampledColor = tex2D.sample(sampler2D, in.texCoords);
+    return sampledColor;
 }

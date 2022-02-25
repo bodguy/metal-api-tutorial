@@ -4,17 +4,17 @@ using namespace metal;
 
 typedef struct {
   float3 position [[attribute(0)]];
-  float2 textureCoordinate [[attribute(1)]];
+  float2 texCoords [[attribute(1)]];
 } VertexIn;
 
 typedef struct {
   float4 position [[position]];
-  float2 textureCoordinate;
+  float2 texCoords;
 } VertexOut;
 
 vertex VertexOut main0(VertexIn verts [[stage_in]]) {
     VertexOut out;
     out.position = float4(verts.position, 1);
-    out.textureCoordinate = verts.textureCoordinate;
+    out.texCoords = verts.texCoords;
     return out;
 }
