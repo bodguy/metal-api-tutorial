@@ -3,39 +3,56 @@
 #import <QuartzCore/CAMetalLayer.h>
 #include <string>
 #include <cmath>
-#include <chrono>
 #include <mutex>
+
+struct Vec3 {
+    float x, y, z;
+};
+struct Vec2 {
+    float u, v;
+};
+struct Vec4 {
+    float r, g, b, a;
+};
+struct Vertex {
+    Vec3 position;
+    Vec4 color;
+};
+struct Vertex2 {
+    Vec3 position;
+    Vec2 texCoord;
+};
 
 class Semaphore {
 public:
-  Semaphore(int count_ = 0) : count{count_} {}
+    Semaphore(int count_ = 0) : count{count_} {}
 
-  inline void notify() {
-      std::unique_lock<std::mutex> lock(mtx);
-      count++;
-      //notify the waiting thread
-      cv.notify_one();
-  }
+    inline void notify() {
+        std::unique_lock<std::mutex> lock(mtx);
+        count++;
+        //notify the waiting thread
+        cv.notify_one();
+    }
 
-  inline void wait() {
-      std::unique_lock<std::mutex> lock(mtx);
-      while (count == 0) {
-          //wait on the mutex until notify is called
-          cv.wait(lock);
-      }
-      count--;
-  }
+    inline void wait() {
+        std::unique_lock<std::mutex> lock(mtx);
+        while (count == 0) {
+            //wait on the mutex until notify is called
+            cv.wait(lock);
+        }
+        count--;
+    }
 
 private:
-  std::mutex mtx;
-  std::condition_variable cv;
-  int count;
+    std::mutex mtx;
+    std::condition_variable cv;
+    int count;
 };
 
 struct FragmentUniforms {
-  FragmentUniforms(float _brightness) : brightness{_brightness} {}
+    FragmentUniforms(float _brightness) : brightness{_brightness} {}
 
-  float brightness;
+    float brightness;
 };
 
 @class MetalView;
@@ -51,6 +68,7 @@ id <MTLRenderPipelineState> g_baseRenderPipelineState;
 id <MTLRenderPipelineState> g_finalRenderPipelineState;
 id <MTLBuffer> g_vertexBuffer;
 id <MTLBuffer> g_vertexBuffer2;
+id <MTLBuffer> g_indexBuffer;
 id <MTLBuffer> g_uniformBuffer;
 id<MTLTexture> g_baseColorTexture;
 static const int k_WindowWidth = 800;
@@ -107,34 +125,43 @@ bool loadShader(const std::string &filename, id <MTLLibrary> &library) {
 void baseRenderPass(id<MTLCommandBuffer> commandBuffer) {
     // base render pass
     MTLRenderPassDescriptor *baseRenderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+    baseRenderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+    baseRenderPassDescriptor.colorAttachments[0].texture = g_baseColorTexture;
+    baseRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
+    baseRenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+
     id <MTLRenderCommandEncoder> commandEncoder = [commandBuffer renderCommandEncoderWithDescriptor:baseRenderPassDescriptor];
     [commandEncoder setRenderPipelineState:g_baseRenderPipelineState];
     [commandEncoder setVertexBuffer:g_vertexBuffer offset:0 atIndex:0];
     [commandEncoder setFragmentBuffer:g_uniformBuffer offset:0 atIndex:0];
-    [commandEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
+    [commandEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                               indexCount:6
+                                indexType:MTLIndexTypeUInt16
+                              indexBuffer:g_indexBuffer
+                        indexBufferOffset:0];
     [commandEncoder endEncoding];
-
-    baseRenderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 1.0, 0.0, 1.0);
-    baseRenderPassDescriptor.colorAttachments[0].texture = g_baseColorTexture;
-    baseRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
-    baseRenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
 }
 
 void finalRenderPass(MetalView* mtkView, id<MTLCommandBuffer> commandBuffer) {
     // final render pass: render to the views drawable texture
     MTLRenderPassDescriptor* finalRenderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
-    id <MTLRenderCommandEncoder> commandEncoder = [commandBuffer renderCommandEncoderWithDescriptor:finalRenderPassDescriptor];
-    [commandEncoder setRenderPipelineState:g_finalRenderPipelineState];
-    [commandEncoder setVertexBuffer:g_vertexBuffer2 offset:0 atIndex:0];
-    [commandEncoder setFragmentTexture:g_baseColorTexture atIndex:0];
-    [commandEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6]; // quad
-    [commandEncoder endEncoding];
-
     id <CAMetalDrawable> drawable = [g_nsView.metalLayer nextDrawable];
     finalRenderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(1.0, 0.0, 0.0, 1.0);
     finalRenderPassDescriptor.colorAttachments[0].texture = drawable.texture;
     finalRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
     finalRenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+
+    id <MTLRenderCommandEncoder> commandEncoder = [commandBuffer renderCommandEncoderWithDescriptor:finalRenderPassDescriptor];
+    [commandEncoder setRenderPipelineState:g_finalRenderPipelineState];
+    [commandEncoder setVertexBuffer:g_vertexBuffer2 offset:0 atIndex:0];
+    [commandEncoder setFragmentTexture:g_baseColorTexture atIndex:0];
+    [commandEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                               indexCount:6
+                                indexType:MTLIndexTypeUInt16
+                              indexBuffer:g_indexBuffer
+                        indexBufferOffset:0];
+    [commandEncoder endEncoding];
+
     [commandBuffer presentDrawable:drawable];
 }
 
@@ -160,13 +187,13 @@ void doRender() {
 
     // signal
     [commandBuffer addCompletedHandler:^(id <MTLCommandBuffer> _) {
-      sem.notify();
+        sem.notify();
     }];
 
     [commandBuffer commit];
 }
 
-bool initBaseRenderPipelineState(id <MTLRenderPipelineState> renderPipelineState) {
+bool initBaseRenderPipelineState(id <MTLRenderPipelineState>& renderPipelineState) {
     id <MTLLibrary> vs_library, fs_library;
     if (!loadShader("./basic_vs.metal", vs_library)) {
         return false;
@@ -205,7 +232,7 @@ bool initBaseRenderPipelineState(id <MTLRenderPipelineState> renderPipelineState
     return true;
 }
 
-bool initFinalRenderPipelineState(id <MTLRenderPipelineState> renderPipelineState) {
+bool initFinalRenderPipelineState(id <MTLRenderPipelineState>& renderPipelineState) {
     id <MTLLibrary> vs_library, fs_library;
     if (!loadShader("./basic_vs2.metal", vs_library)) {
         return false;
@@ -252,7 +279,7 @@ bool init() {
     textureDescriptor.pixelFormat = MTLPixelFormatBGRA8Unorm;
     textureDescriptor.width = k_WindowWidth;
     textureDescriptor.height = k_WindowHeight;
-    textureDescriptor.usage = MTLTextureUsageShaderRead;
+    textureDescriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
     textureDescriptor.textureType = MTLTextureType2D;
     textureDescriptor.mipmapLevelCount = 1;
     g_baseColorTexture = [g_mtlDevice newTextureWithDescriptor:textureDescriptor];
@@ -264,31 +291,25 @@ bool init() {
         return false;
     }
 
-    static float quadVertexData[] = {
-            // position (vec3) + color (vec4)
-            0.5, -0.5, 0.0, 1.0, 0.0, 0.0, 1.0,
-            -0.5, -0.5, 0.0, 0.0, 1.0, 0.0, 1.0,
-            -0.5, 0.5, 0.0, 0.0, 0.0, 1.0, 1.0,
-
-            0.5, 0.5, 0.0, 1.0, 1.0, 0.0, 1.0,
-            0.5, -0.5, 0.0, 1.0, 0.0, 0.0, 1.0,
-            -0.5, 0.5, 0.0, 0.0, 0.0, 1.0, 1.0,
+    static Vertex vertexData[] = {
+            Vertex{.position = {0.5, -0.5, 0.0}, .color = {1.0, 0.0, 0.0, 1.0}},
+            Vertex{.position = {-0.5, -0.5, 0.0}, .color = {0.0, 1.0, 0.0, 1.0}},
+            Vertex{.position = {-0.5, 0.5, 0.0}, .color = {0.0, 0.0, 1.0, 1.0}},
+            Vertex{.position = {0.5, 0.5, 0.0}, .color = {1.0, 1.0, 0.0, 1.0}}
     };
-    static float quadVertexData2[] = {
-            //	2----------3
-            //	|          |
-            //	1----------0
-            // position (vec3) + textureCoord (vec4)
-            0.5, -0.5, 0.0, 1.0, 0.0,
-            -0.5, -0.5, 0.0, 0.0, 1.0,
-            -0.5, 0.5, 0.0, 0.0, 0.0,
-
-            0.5, 0.5, 0.0, 1.0, 1.0,
-            0.5, -0.5, 0.0, 1.0, 0.0,
-            -0.5, 0.5, 0.0, 0.0, 0.0,
+    static Vertex2 vertexData2[] = {
+            Vertex2{.position = {1.0, -1.0, 0.0}, .texCoord = {1.0, 1.0}},
+            Vertex2{.position = {-1.0, -1.0, 0.0}, .texCoord = {0.0, 1.0}},
+            Vertex2{.position = {-1.0, 1.0, 0.0}, .texCoord = {0.0, 0.0}},
+            Vertex2{.position = {1.0, 1.0, 0.0}, .texCoord = {1.0, 0.0}}
     };
-    g_vertexBuffer = [g_mtlDevice newBufferWithBytes:quadVertexData length:sizeof(quadVertexData) options:MTLResourceOptionCPUCacheModeDefault];
-    g_vertexBuffer2 = [g_mtlDevice newBufferWithBytes:quadVertexData2 length:sizeof(quadVertexData2) options:MTLResourceOptionCPUCacheModeDefault];
+    static uint16_t indexData[] = {
+            0, 2, 1,
+            0, 3, 2
+    };
+    g_vertexBuffer = [g_mtlDevice newBufferWithBytes:vertexData length:sizeof(vertexData) options:MTLResourceOptionCPUCacheModeDefault];
+    g_vertexBuffer2 = [g_mtlDevice newBufferWithBytes:vertexData2 length:sizeof(vertexData2) options:MTLResourceOptionCPUCacheModeDefault];
+    g_indexBuffer = [g_mtlDevice newBufferWithBytes:indexData length:sizeof(indexData) options:MTLResourceOptionCPUCacheModeDefault];
     g_uniformBuffer = [g_mtlDevice newBufferWithBytes:&g_fragmentUniforms length:sizeof(FragmentUniforms) options:MTLResourceOptionCPUCacheModeDefault];
 
     return true;
@@ -298,6 +319,7 @@ void renderDestroy() {
     [g_uniformBuffer release];
     [g_vertexBuffer release];
     [g_vertexBuffer2 release];
+    [g_indexBuffer release];
     [g_baseRenderPipelineState release];
     [g_finalRenderPipelineState release];
     [g_baseColorTexture release];
@@ -396,7 +418,7 @@ static CVReturn displayLinkCallback(
 
 @implementation MetalView
 + (id)layerClass {
-    return [CAMetalLayer class];
+    return [NSValue valueWithPointer:[CAMetalLayer class]];
 }
 
 - (CALayer *)makeBackingLayer {
