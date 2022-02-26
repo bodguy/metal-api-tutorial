@@ -534,7 +534,7 @@ bool init() {
     textureDescriptor.pixelFormat = MTLPixelFormatBGRA8Unorm;
     textureDescriptor.width = k_WindowWidth;
     textureDescriptor.height = k_WindowHeight;
-    textureDescriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
+    textureDescriptor.usage = MTLTextureUsageShaderRead;
     textureDescriptor.textureType = MTLTextureType2D;
     textureDescriptor.mipmapLevelCount = 1;
     g_baseColorTexture = [g_mtlDevice newTextureWithDescriptor:textureDescriptor];
